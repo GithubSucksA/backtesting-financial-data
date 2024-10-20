@@ -15,13 +15,21 @@ class TradingBacktester:
         self.initial_balance = initial_balance
         self.risk_per_trade = risk_per_trade
         self.df = self.fetch_data()
-        self.check_data_quality()
-        self.df = self.calculate_indicators(self.df)
-        self.signals = self.calculate_signals(self.df)
-        self.trades_executed = 0
-        self.trading_volume = 0
-        self.winning_trades = 0
-        self.losing_trades = 0
+        #self.check_data_quality()
+        
+        # Check if data is valid during initialization
+        if self.df is None or self.df.empty:
+            print(f"Warning: No valid data for {self.symbol} with interval {self.interval}. Backtesting will be skipped.")
+            self.valid_data = False
+        else:
+            self.valid_data = True
+            self.check_data_quality()
+            self.df = self.calculate_indicators(self.df)
+            self.signals = self.calculate_signals(self.df)
+            self.trades_executed = 0
+            self.trading_volume = 0
+            self.winning_trades = 0
+            self.losing_trades = 0
 
     def fetch_data(self) -> pd.DataFrame:
         url = f"https://api.kraken.com/0/public/OHLC?pair={self.symbol}&interval={self.interval}"
@@ -33,6 +41,11 @@ class TradingBacktester:
         
         response = requests.request("GET", url, headers=headers, data=payload)
         data = response.json()
+
+        # Check if the data is valid
+        if 'result' not in data or self.symbol not in data['result']:
+            print(f"Warning: No data returned for {self.symbol} with interval {self.interval}")
+            return None  # Return None to indicate no data available
         
         # Function to convert timestamp to formatted string
         def format_timestamp(timestamp):
@@ -48,124 +61,96 @@ class TradingBacktester:
         
         # Convert price and volume columns to appropriate numeric types, because it is a json string
         numeric_columns = ['open', 'high', 'low', 'close', 'vwap', 'volume']
-        df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric)
+        df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors='coerce')
         
+        # Check if the DataFrame is empty after conversion
+        if df.empty or df.isnull().values.any():
+            print(f"Warning: Data for {self.symbol} is incomplete or contains NaN values.")
+            return None  # Return None to indicate incomplete data
+
         return df
 
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        # TODO:Add multiple technical indicators using pandas_ta
+        # Calculate only SMA and RSI
         df['MA20'] = ta.sma(df['close'], length=20)
         df['MA50'] = ta.sma(df['close'], length=50)
         df['RSI'] = ta.rsi(df['close'], length=14)
-        macd = ta.macd(df['close'], fast=12, slow=26, signal=9)
-        df['MACD'] = macd['MACD_12_26_9']
-        df['MACD_signal'] = macd['MACDs_12_26_9']
-        df['ATR'] = ta.atr(df['high'], df['low'], df['close'], length=14)
-        # Add Keltner Channels
-        kc = ta.kc(df['high'], df['low'], df['close'], length=20, scalar=2, mamode='ema', offset=0)
-        aberration = ta.aberration(df['high'], df['low'], df['close'], length=20, mamode='ema', offset=0)
-        
-        # Print the column names to see what's available
-        #print("Keltner Channel columns:", kc.columns)
-        # Print the column names for Aberration
-        #print("Aberration columns:", aberration.columns)
-
-        # Use the first three columns (assuming they are Lower, Middle, and Upper)
-        df['KC_LOWER'] = kc.iloc[:, 0]
-        df['KC_MIDDLE'] = kc.iloc[:, 1]
-        df['KC_UPPER'] = kc.iloc[:, 2]
-
-        df['ABERRATION_ZG'] = aberration.iloc[:, 0]
-        df['ABERRATION_SG'] = aberration.iloc[:, 1]
-        df['ABERRATION_XG'] = aberration.iloc[:, 2]
-        df['ABERRATION_ATR'] = aberration.iloc[:, 3]
         return df
 
     def calculate_signals(self, df: pd.DataFrame) -> pd.Series:
-        # TODO: Implement a more sophisticated signal generation strategy
-        buy_signal = (
-            (df['close'] > df['MA20']) &
-            (df['MA20'] > df['MA50']) &
-            (df['RSI'] < 70) &
-            (df['MACD'] > df['MACD_signal']) &
-            (df['close'] > df['KC_LOWER']) &  # Price above lower Keltner Channel
-            (df['close'] < df['KC_UPPER']) &  # Price below upper Keltner Channel
-            (df['close'] > df['ABERRATION_SG'])  # Price above Aberration support
-        )
-        sell_signal = (
-            (df['close'] < df['MA20']) &
-            (df['RSI'] > 70) &
-            (df['MACD'] < df['MACD_signal']) |
-            (df['close'] > df['KC_UPPER']) |  # Price above upper Keltner Channel
-            (df['close'] < df['ABERRATION_SG'])  # Price below Aberration support
-        )
+        # Check if necessary columns are valid
+        if df['close'].isnull().any() or df['MA20'].isnull().any():
+            print(f"Warning: Missing data for signals calculation for {self.symbol}.")
+            return pd.Series(index=df.index)  # Return an empty Series
+
+        # Generate signals based on SMA and RSI
+        buy_signal = (df['close'] > df['MA20'])
+        sell_signal = (df['close'] < df['MA20'])
         return pd.Series(np.where(buy_signal, 1, np.where(sell_signal, -1, 0)), index=df.index)
 
+
     def backtest(self) -> Tuple[List[float], List[float], float, float, float, float]:
-            position = 0
-            balance = self.initial_balance
-            balances = [balance]
-            returns = [0]
-            transaction_cost = 0.0033  # 0.1% transaction cost
-            trades_executed = 0
-            self.trading_volume = 0
-            self.winning_trades = 0
-            self.losing_trades = 0
-            last_buy_price = 0
-            fees_paid = []
+        # Check if the DataFrame is valid before proceeding
+        if self.df.isnull().values.any() or self.df.empty:
+            print(f"Warning: Incomplete data for backtest for {self.symbol}.")
+            return [], [], 0, 0, 0, 0  # Ensure consistent return structure
+
+        position = 0
+        balance = self.initial_balance
+        balances = [balance]
+        returns = [0]
+        transaction_cost = 0.0033  # 0.1% transaction cost
+        trades_executed = 0
+        self.trading_volume = 0
+        self.winning_trades = 0
+        self.losing_trades = 0
+        last_buy_price = 0
+        fees_paid = []
+        
+        for i in range(1, len(self.df)):
+            current_price = self.df['close'].iloc[i]
+            signal = self.signals.iloc[i]
             
-            #print(f"Initial balance: {balance}")
-
-            for i in range(1, len(self.df)):
-                current_price = self.df['close'].iloc[i]
-                signal = self.signals.iloc[i]
+            if signal == 1 and position == 0:
+                # Risk management: Use ATR for position sizing
+                cost = self.risk_per_trade * balance
+                position_size = (cost * (1 - transaction_cost)) / current_price
                 
-                if signal == 1 and position == 0:
-                    # Risk management: Use ATR for position sizing
-                    cost = self.risk_per_trade * balance
-                    position_size = (cost * (1 - transaction_cost)) / current_price
-                    
-                    if cost <= balance:
-                        position = position_size
-                        balance -= cost
-                        trades_executed += 1
-                        self.trading_volume += cost
-                        last_buy_price = current_price
-                        fees_paid.append(cost * transaction_cost)
-                    else:
-                        print("Insufficient balance for buy")
-                
-                elif signal == -1 and position > 0:
-                    # Sell
-                    sell_value = position * current_price * (1 - transaction_cost)
-                    balance += sell_value
-                    self.trading_volume += sell_value
-
-                    # Determine if it's a winning or losing trade
-                    if sell_value > cost:
-                        self.winning_trades += 1
-                    else:
-                        self.losing_trades += 1
-
-                    position = 0
+                if cost <= balance:
+                    position = position_size
+                    balance -= cost
                     trades_executed += 1
-                    fees_paid.append(sell_value * transaction_cost)
-                
-                current_value = balance + position * current_price
-                balances.append(current_value)
-                returns.append((current_value - balances[i-1]) / balances[i-1])
+                    self.trading_volume += cost
+                    last_buy_price = current_price
+                    fees_paid.append(cost * transaction_cost)
+                else:
+                    print("Insufficient balance for buy")
+            
+            elif signal == -1 and position > 0:
+                # Sell
+                sell_value = position * current_price * (1 - transaction_cost)
+                balance += sell_value
+                self.trading_volume += sell_value
 
-             # Calculate total fees paid
-            total_fees_paid = sum(fees_paid)
+                # Determine if it's a winning or losing trade
+                if sell_value > cost:
+                    self.winning_trades += 1
+                else:
+                    self.losing_trades += 1
 
-            #print(self.symbol)
-            #print(f"Total trades executed: {trades_executed}")
-            #print(f"Win rate: {self.winning_trades / trades_executed:.2%}" if trades_executed > 0 else "No trades executed")
-            #print(f"NET: {balances[-1] - self.initial_balance:.2f}")
-            #print(f"Total fees paid: {total_fees_paid:.2f}")  # Print total fees paid
-            #print(f"Trading volume: {self.trading_volume:.2f}")
-            self.trades_executed = trades_executed
-            return balances, returns, position, last_buy_price, balances[-1] - self.initial_balance, total_fees_paid, self.trading_volume
+                position = 0
+                trades_executed += 1
+                fees_paid.append(sell_value * transaction_cost)
+            
+            current_value = balance + position * current_price
+            balances.append(current_value)
+            returns.append((current_value - balances[i-1]) / balances[i-1])
+
+        # Calculate total fees paid
+        total_fees_paid = sum(fees_paid)
+
+        self.trades_executed = trades_executed
+        return balances, returns, position, last_buy_price, balances[-1] - self.initial_balance, total_fees_paid, self.trading_volume
 
     def plot_results(self, balances: List[float]):
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
@@ -215,6 +200,19 @@ class TradingBacktester:
             print(self.df.join(self.signals.rename('signal')).to_string())
 
     def run_backtest(self):
+        # Skip backtest if data is invalid
+        if not self.valid_data:
+            return {
+                "symbol": self.symbol,
+                "total_return": 0,
+                "win_rate": 0,
+                "trades_executed": 0,
+                "total_fees_paid": 0,
+                "net_profit_loss": 0,
+                "trading_volume": 0,
+                "sharpe_ratio": 0,
+            }  # Return a dictionary with zero values for metrics
+            
         #self.display_data()
         balances, returns, final_position, last_buy_price, net_profit_loss, total_fees_paid, trading_volume = self.backtest()
         self.plot_results(balances)
@@ -289,6 +287,7 @@ if __name__ == "__main__":
     intervals = [15, 30, 60, 240, 1440, 10080]
 
     all_results = []
+    skipped_symbols = []
 
     for interval in intervals:
         print(f"\n{interval} MIN")
@@ -306,6 +305,12 @@ if __name__ == "__main__":
                     print(backtester.get_date_range())
                     #print('\n\n')
                     date_range_printed = True
+
+                # Check if data is valid before running the backtest
+                if not backtester.valid_data:
+                    print(f"Warning: Skipping backtest for {symbol} due to insufficient data.")
+                    skipped_symbols.append(symbol)  # Add to skipped list
+                    continue  # Skip to the next symbol
 
                 result = backtester.run_backtest()
                 interval_results.append(result)
@@ -354,8 +359,14 @@ if __name__ == "__main__":
     results_df = pd.DataFrame(all_results)
     results_df.to_csv('backtest_results.csv', index=False)
     print("\nDetailed results saved to 'backtest_results.csv'")
+
+       # Print skipped symbols
+    if skipped_symbols:
+        print(f"Skipped symbols due to insufficient data: {', '.join(skipped_symbols)}")
     
     #end_time = time.time()
     #print(f"\nEND TIME {end_time}")
     #total_duration = end_time - start_time
     #print(f"TOTAL TIME {total_duration:.2f} seconds")
+
+

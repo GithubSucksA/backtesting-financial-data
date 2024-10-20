@@ -293,6 +293,7 @@ if __name__ == "__main__":
                     #print(f"Open position return: {result['open_position_return']:.2%}")
                 #print('\n')
             except Exception as e:
+                print(e)
                 print(f"Error running backtest for {symbol} with interval {interval}: {e}")
         
         # Sort interval results by total return
