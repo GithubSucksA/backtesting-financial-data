@@ -53,119 +53,95 @@ class TradingBacktester:
         return df
 
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        # Calculate only SMA and RSI
         df['MA20'] = ta.sma(df['close'], length=20)
         df['MA50'] = ta.sma(df['close'], length=50)
         df['RSI'] = ta.rsi(df['close'], length=14)
-        macd = ta.macd(df['close'])
-        df = df.join(macd)
-        bollinger = ta.bbands(df['close'], length=20, std=2)
-        df = df.join(bollinger)
         return df
 
     def calculate_signals(self, df: pd.DataFrame) -> pd.Series:
-        # Define your parameters
-        drop_percentage = 0.05  # Example: 5% drop for buy signal
-        rise_percentage = 0.05   # Example: 5% rise for sell signal
-        rsi_buy_level = 30       # Example: RSI level for buy signal
-        rsi_sell_level = 70      # Example: RSI level for sell signal
-
-        # Generate signals based on new conditions
+        # Generate signals based on SMA and RSI
         buy_signal = (
-            (df['close'] < df['MA20'] * (1 - drop_percentage)) &  # Price drops x% below MA20
-            (df['RSI'] < rsi_buy_level)  # RSI is below a certain level
+            (df['close'] > df['MA20'])
         )
         sell_signal = (
-            (df['close'] > df['MA20'] * (1 + rise_percentage)) &  # Price rises x% above MA20
-            (df['RSI'] > rsi_sell_level)  # RSI is above a certain level
+            (df['close'] < df['MA20'])
         )
         return pd.Series(np.where(buy_signal, 1, np.where(sell_signal, -1, 0)), index=df.index)
-        
+
     def backtest(self) -> Tuple[List[float], List[float], float, float, float, float]:
-            position = 0
-            balance = self.initial_balance
-            balances = [balance]
-            returns = [0]
-            transaction_cost = 0.0033  # 0.1% transaction cost
-            trades_executed = 0
-            self.trading_volume = 0
-            self.winning_trades = 0
-            self.losing_trades = 0
-            last_buy_price = 0
-            fees_paid = []
+        position = 0
+        balance = self.initial_balance
+        balances = [balance]
+        returns = [0]
+        transaction_cost = 0.0033  # 0.1% transaction cost
+        trades_executed = 0
+        self.trading_volume = 0
+        self.winning_trades = 0
+        self.losing_trades = 0
+        last_buy_price = 0
+        fees_paid = []
+        
+        leverage = 2  # Example leverage factor
+        stop_loss_percentage = 0.02  # 2% stop loss
+
+        for i in range(1, len(self.df)):
+            current_price = self.df['close'].iloc[i]
+            signal = self.signals.iloc[i]
             
-            #print(f"Initial balance: {balance}")
-            #leverage = 2  # Example leverage factor
-            stop_loss_percentage = 0.02  # 2% stop loss
+            # Check for stop-loss condition
+            if position > 0 and current_price < last_buy_price * (1 - stop_loss_percentage):
+                # Trigger stop-loss
+                sell_value = position * current_price * (1 - transaction_cost)
+                balance += sell_value
+                self.trading_volume += sell_value
+                self.losing_trades += 1
+                position = 0
+                trades_executed += 1
+                fees_paid.append(sell_value * transaction_cost)
+                last_buy_price = 0  # Reset last buy price after stop-loss
 
-            for i in range(1, len(self.df)):
-                current_price = self.df['close'].iloc[i]
-                signal = self.signals.iloc[i]
+            if signal == 1 and position == 0:
+                # Risk management: Use ATR for position sizing
+                cost = self.risk_per_trade * balance * leverage  # Include leverage in cost
+                position_size = (cost * (1 - transaction_cost)) / current_price  # Adjust position size calculation
+                
+                if cost <= balance:
+                    position = position_size
+                    balance -= cost
+                    trades_executed += 1
+                    self.trading_volume += cost
+                    last_buy_price = current_price
+                    fees_paid.append(cost * transaction_cost)
+                else:
+                    print("Insufficient balance for buy")
+            
+            elif signal == -1 and position > 0:
+                # Sell
+                sell_value = position * current_price * (1 - transaction_cost)
+                balance += sell_value
+                self.trading_volume += sell_value
 
-                # Check for stop-loss condition
-                if position > 0 and current_price < last_buy_price * (1 - stop_loss_percentage):
-                    # Trigger stop-loss
-                    sell_value = position * current_price * (1 - transaction_cost)
-                    balance += sell_value
-                    self.trading_volume += sell_value
+                # Determine if it's a winning or losing trade
+                buy_value = position * last_buy_price  # Calculate the total buy value
+                if sell_value > buy_value:  # Compare sell value with the buy value
+                    self.winning_trades += 1
+                else:
                     self.losing_trades += 1
-                    position = 0
-                    trades_executed += 1
-                    fees_paid.append(sell_value * transaction_cost)
-                    print(f"\033[91mSTOP-LOSS TRIGGERED AT: {current_price:.2f}, BALANCE: {balance:.2f}, TIME: {self.get_trade_time(i)}\033[0m\n")
-                    continue  # Skip to the next iteration
-                
-                if signal == 1 and position == 0:
-                    # Risk management: Use ATR for position sizing
-                    cost = self.risk_per_trade * balance
-                    position_size = (cost * (1 - transaction_cost)) / current_price  # Apply leverage
-                    
-                    if cost <= balance:
-                        position = position_size
-                        balance -= cost
-                        trades_executed += 1
-                        self.trading_volume += cost
-                        last_buy_price = current_price
-                        fees_paid.append(cost * transaction_cost)
-                        trade_time = self.get_trade_time(i)
-                        print(f"\033[92mBUY AT: {current_price:.2f}, BALANCE: {balance:.2f}, FEE: {cost * transaction_cost}, TIME: {trade_time}\033[0m\n")
-                    else:
-                        print("Insufficient balance for buy")
-                
-                elif signal == -1 and position > 0:
-                    # Sell
-                    sell_value = position * current_price * (1 - transaction_cost)
-                    balance += sell_value
-                    self.trading_volume += sell_value
-                    trade_time = self.get_trade_time(i)
-                    print(f"\033[91mSELL AT {current_price:.2f}, BALANCE: {balance:.2f}, FEE: {cost * transaction_cost}, TIME: {trade_time}\033[0m\n")
 
-                    # Determine if it's a winning or losing trade
-                    if sell_value > cost:
-                        self.winning_trades += 1
-                    else:
-                        self.losing_trades += 1
+                position = 0
+                trades_executed += 1
+                fees_paid.append(sell_value * transaction_cost)
+            
+            current_value = balance + position * current_price
+            balances.append(current_value)
+            returns.append((current_value - balances[i-1]) / balances[i-1])
 
-                    position = 0
-                    trades_executed += 1
-                    fees_paid.append(sell_value * transaction_cost)
-                
-                current_value = balance + position * current_price
-                balances.append(current_value)
-                returns.append((current_value - balances[i-1]) / balances[i-1])
+        # Calculate total fees paid
+        total_fees_paid = sum(fees_paid)
 
-             # Calculate total fees paid
-            total_fees_paid = sum(fees_paid)
-
-            #print(self.symbol)
-            #print(f"Total trades executed: {trades_executed}")
-            #print(f"Win rate: {self.winning_trades / trades_executed:.2%}" if trades_executed > 0 else "No trades executed")
-            #print(f"NET: {balances[-1] - self.initial_balance:.2f}")
-            #print(f"Total fees paid: {total_fees_paid:.2f}")  # Print total fees paid
-            #print(f"Trading volume: {self.trading_volume:.2f}")
-            print(f"Total trades executed: {trades_executed}")
-            print(f"Final balance: {balances[-1]:.2f}")
-            self.trades_executed = trades_executed
-            return balances, returns, position, last_buy_price, balances[-1] - self.initial_balance, total_fees_paid, self.trading_volume
+        self.trades_executed = trades_executed
+        return balances, returns, position, last_buy_price, balances[-1] - self.initial_balance, total_fees_paid, self.trading_volume
 
     def plot_results(self, balances: List[float]):
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
@@ -277,18 +253,14 @@ class TradingBacktester:
             #print(f"Columns with NaN values: {nan_columns}")
 
     def get_date_range(self):
-        return f"Date range: {self.df.index[0]} to {self.df.index[-1]}\n"
-
-    def get_trade_time(self, index: int) -> str:
-        """Return the exact date and time of a trade based on the index."""
-        return str(self.df.index[index])
+        return f"Date range: {self.df.index[0]} to {self.df.index[-1]}"
 
 
 # Usage
 if __name__ == "__main__":
     #start_time = time.time()
     #print(f"START TIME {start_time}")
-    symbols = ["BTC/USD"] 
+    symbols = ["AAVEUSD", "BTC/USD", "ETH/USD", "ADAUSDT", "ALGOUSDT", "ATOMUSDT", "AVAXUSDT", "DOTUSDT", "CRVUSD", "EGLDUSD", "ENJUSD", "EWTUSD", "FETUSD", "FILUSD", "FLOKIUSD", "FLOWUSD", "GALAUSD", "GMXUSD", "ICPUSD", "INJUSD", "LINKUSDT", "LTCUSDT", "MANAUSDT", "LRCUSD", "MATICUSDT", "MINAUSD", "MKRUSD", "NEARUSD", "OCEANUSD", "PENDLEUSD", "PEPEUSD", "QNTUSD", "PYTHUSD", "RENDERUSD", "SANDUSD", "SHIBUSD", "SOLUSDT", "TAOUSD", "TRXUSD", "UNIUSD", "WIFUSD", "XDGUSD"] 
     #intervals = [15, 30, 60, 240, 1440, 10080, 21600]
     intervals = [15, 30, 60, 240, 1440, 10080]
 
@@ -329,19 +301,18 @@ if __name__ == "__main__":
                     #print(f"Open position return: {result['open_position_return']:.2%}")
                 #print('\n')
             except Exception as e:
+                print(e)
                 print(f"Error running backtest for {symbol} with interval {interval}: {e}")
         
         # Sort interval results by total return
         sorted_results = sorted(interval_results, key=lambda x: x['total_return'], reverse=True)
         
         # Display top 30 performers for this interval
-        print(f"\nTop performers for interval {interval}:")
+        print(f"\nTop {len(sorted_results)} performers for interval {interval}:")
         print(f"{'Rank':<5} {'Symbol':<10} {'Total Return':<20} {'Win Rate':<15} {'Trades Executed':<15} {'Total Fees Paid':<20} {'NET Profit/Loss':<20} {'Trading Volume':<20} {'Sharpe Ratio':<15}")
         print("=" * 160)  # Separator line
-        for i, result in enumerate(sorted_results, 1):
-            if result['symbol'] in symbols:  # Filter to only include tested symbols
-                print(f"{i:<5} {result['symbol']:<10} {result['total_return']:<20.2%} {result['win_rate']:<15.2%} {result['trades_executed']:<15} {result['total_fees_paid']:<20.2f} {result['net_profit_loss']:<20.2f} {result['trading_volume']:<20.2f} {result['sharpe_ratio']:<15.2f}")
-
+        for i, result in enumerate(sorted_results[:-1], 1):
+            print(f"{i:<5} {result['symbol']:<10} {result['total_return']:<20.2%} {result['win_rate']:<15.2%} {result['trades_executed']:<15} {result['total_fees_paid']:<20.2f} {result['net_profit_loss']:<20.2f} {result['trading_volume']:<20.2f} {result['sharpe_ratio']:<15.2f}")
         # Calculate and display average metrics for this interval
         avg_return = np.mean([r['total_return'] for r in interval_results])
         avg_sharpe = np.mean([r['sharpe_ratio'] for r in interval_results])
@@ -365,3 +336,6 @@ if __name__ == "__main__":
     #print(f"\nEND TIME {end_time}")
     #total_duration = end_time - start_time
     #print(f"TOTAL TIME {total_duration:.2f} seconds")
+
+
+
