@@ -10,7 +10,7 @@ import yfinance as yf
 
 try:
     # Fetch data using yfinance
-    ticker = yf.Ticker("AAPL")
+    ticker = yf.Ticker("BTC")
     df = ticker.history(period="1mo")  # Fetch 1 month of data
 
     # Add some technical indicators using pandas_ta
@@ -25,8 +25,15 @@ except Exception as e:
 
 
 
-# Fetch historical data for EUR/USD
-data = yf.download('EURUSD=X', start='2023-10-01', end='2024-07-10', interval='1d')
-
-# Check the first 5 rows of data
+# Fetch historical data for Bitcoin (BTC)
+data = yf.download('BTC-USD', period="1m", interval='15m')
 print(data.head())
+
+# Set pandas options to display all rows and columns
+pd.set_option('display.max_rows', None)  # Show all rows
+pd.set_option('display.max_columns', None)  # Show all columns
+pd.set_option('display.width', 1000)  # Set the display width to a larger value
+pd.set_option('display.max_colwidth', None)  # Allow columns to expand fully
+
+# Print all data
+print(data)

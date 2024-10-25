@@ -12,7 +12,7 @@ from ccistrat import CciBacktester
 from cfostrat import CfoBacktester
 from gcstrat import GcBacktester
 
-def run_backtester(strategy: str, symbol: str, interval: str, initial_balance: float, risk_per_trade: float):
+def run_backtester(strategy: str, symbol: str, interval: str, initial_balance: float, risk_per_trade: float, data_source: str = 'kraken'):
     strategies = {
         "ao": AoBacktester,
         "apo": ApoBacktester,
@@ -25,7 +25,7 @@ def run_backtester(strategy: str, symbol: str, interval: str, initial_balance: f
     }
     
     if strategy in strategies:
-        backtester = strategies[strategy](symbol, interval, initial_balance, risk_per_trade)
+        backtester = strategies[strategy](symbol, interval, initial_balance, risk_per_trade, data_source)
     else:
         raise ValueError("Invalid strategy name. Choose a valid strategy.")
 
@@ -38,6 +38,7 @@ if __name__ == "__main__":
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Run a backtesting strategy.")
     parser.add_argument("--strategy", type=str, nargs='*', help="Strategy to use (leave empty to run all strategies).")
+    parser.add_argument("--source", type=str, default='kraken', help="Source to retrieve data from")  # Set default value here
     parser.add_argument("--symbol", type=str, default="BTC/USD", help="Symbol for trading pair.")
     parser.add_argument("--interval", type=str, default="1440", help="Time interval for trading data.")
     parser.add_argument("--initial_balance", type=float, default=10000, help="Initial balance for the backtest.")
@@ -49,9 +50,12 @@ if __name__ == "__main__":
     if not args.strategy:
         args.strategy = ["ao", "apo", "bias", "bos", "brar", "cci", "cfo", "gc"]
 
-    #symbols = ["AAVEUSD", "BTC/USD", "ETH/USD", "ADAUSDT", "ALGOUSDT", "ATOMUSDT", "AVAXUSDT", "DOTUSDT", "CRVUSD", "EGLDUSD", "ENJUSD", "EWTUSD", "FETUSD", "FILUSD", "FLOKIUSD", "FLOWUSD", "GALAUSD", "GMXUSD", "ICPUSD", "INJUSD", "LINKUSDT", "LTCUSDT", "MANAUSDT", "LRCUSD", "MATICUSDT", "MINAUSD", "MKRUSD", "NEARUSD", "OCEANUSD", "PENDLEUSD", "PEPEUSD", "QNTUSD", "PYTHUSD", "RENDERUSD", "SANDUSD", "SHIBUSD", "SOLUSDT", "TAOUSD", "TRXUSD", "UNIUSD", "WIFUSD", "XDGUSD"] 
-    symbols = ["BTC/USD", "ETH/USD"]
+    # Set intervals based on data source
     intervals = [15, 30, 60, 240, 1440]
+    if args.source == "yahoo":
+        intervals = ['1d', '1wk']
+    
+    symbols = ["BTC/USD", "ETH/USD"]
     #intervals = [60, 240, 1440, 10080]
 
     all_results = []
@@ -67,7 +71,7 @@ if __name__ == "__main__":
         for symbol in symbols:
             for strat in args.strategy:  # Loop through each specified strategy
                 try:
-                    backtester = run_backtester(strat, symbol, interval, 10000, 0.05)
+                    backtester = run_backtester(strat, symbol, interval, 10000, 0.05, args.source)
                     # Assuming backtester.run_backtest() returns results
                     results = backtester.run_backtest()  # Call the method to get results
                     interval_results.append(results)  # Collect results for this interval

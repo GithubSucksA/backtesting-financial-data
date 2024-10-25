@@ -10,11 +10,12 @@ import os
 from abc import ABC, abstractmethod
 
 class BaseTradingBacktester(ABC):
-    def __init__(self, symbol: str, interval: str = '1440', initial_balance: float = 10000, risk_per_trade: float = 0.05):
+    def __init__(self, symbol: str, interval: str = '1440', initial_balance: float = 10000, risk_per_trade: float = 0.05, data_source: str = 'kraken'):
         self.symbol = symbol
         self.interval = interval
         self.initial_balance = initial_balance
         self.risk_per_trade = risk_per_trade
+        self.data_source = data_source
         self.df = self.fetch_data()
         self.check_data_quality()
         self.df = self.calculate_indicators(self.df)
@@ -25,33 +26,62 @@ class BaseTradingBacktester(ABC):
         self.losing_trades = 0
 
     def fetch_data(self) -> pd.DataFrame:
-        url = f"https://api.kraken.com/0/public/OHLC?pair={self.symbol}&interval={self.interval}"
-    
-        payload = {}
-        headers = {
-        'Accept': 'application/json'
-        }
-        
-        response = requests.request("GET", url, headers=headers, data=payload)
-        data = response.json()
-        
-        # Function to convert timestamp to formatted string
-        def format_timestamp(timestamp):
-            return datetime.datetime.fromtimestamp(timestamp)
-        
-        # Convert the data to a pandas DataFrame
-        df = pd.DataFrame(data['result'][self.symbol], 
-                        columns=['timestamp', 'open', 'high', 'low', 'close', 'vwap', 'volume', 'count'])
-        
-        # Convert timestamp to datetime and set as index
-        df['timestamp'] = df['timestamp'].apply(format_timestamp)
-        df.set_index('timestamp', inplace=True)
-        
-        # Convert price and volume columns to appropriate numeric types, because it is a json string
-        numeric_columns = ['open', 'high', 'low', 'close', 'vwap', 'volume']
-        df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric)
-        
-        return df
+        if self.data_source == 'kraken':
+            url = f"https://api.kraken.com/0/public/OHLC?pair={self.symbol}&interval={self.interval}"
+            payload = {}
+            headers = {
+            'Accept': 'application/json'
+            }
+            
+            response = requests.request("GET", url, headers=headers, data=payload)
+            data = response.json()
+            
+            # Function to convert timestamp to formatted string
+            def format_timestamp(timestamp):
+                return datetime.datetime.fromtimestamp(timestamp)
+            
+            # Convert the data to a pandas DataFrame
+            df = pd.DataFrame(data['result'][self.symbol], 
+                            columns=['timestamp', 'open', 'high', 'low', 'close', 'vwap', 'volume', 'count'])
+            
+            # Convert timestamp to datetime and set as index
+            df['timestamp'] = df['timestamp'].apply(format_timestamp)
+            df.set_index('timestamp', inplace=True)
+            
+            # Convert price and volume columns to appropriate numeric types, because it is a json string
+            numeric_columns = ['open', 'high', 'low', 'close', 'vwap', 'volume']
+            df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric)
+            
+            return df
+        elif self.data_source == 'yahoo':
+            # Adjust the symbol for Yahoo Finance
+            yahoo_symbol = self.symbol.replace('/', '-')
+            import yfinance as yf
+            
+            # Check if the interval is supported
+            if self.interval not in ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo']:
+                raise ValueError(f"Unsupported interval: {self.interval}. Supported intervals are: 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo.")
+            
+            # Fetch data with a shorter period if necessary
+            try:
+                df = yf.download(yahoo_symbol, interval=self.interval, period='1mo' if self.interval in ['15m', '30m', '1h'] else '10y')
+                if df.empty or 'Open' not in df.columns:
+                    raise ValueError(f"No data returned for {yahoo_symbol} at interval {self.interval}.")
+                df.reset_index(inplace=True)
+                df.rename(columns={'Date': 'timestamp'}, inplace=True)
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                df.set_index('timestamp', inplace=True)
+                return df[['Open', 'High', 'Low', 'Close', 'Volume']].rename(columns={
+                    'Open': 'open',
+                    'High': 'high',
+                    'Low': 'low',
+                    'Close': 'close',
+                    'Volume': 'volume'
+                })
+            except Exception as e:
+                raise ValueError(f"Error fetching data from Yahoo: {e}")
+        else:
+            raise ValueError("Unsupported data source. Please choose 'kraken' or 'yahoo'.")
 
     @abstractmethod
     def calculate_indicators(self, df):
@@ -275,4 +305,5 @@ class BaseTradingBacktester(ABC):
     def get_trade_time(self, index: int) -> str:
         """Return the exact date and time of a trade based on the index."""
         return str(self.df.index[index])
+
 
