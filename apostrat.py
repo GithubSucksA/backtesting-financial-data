@@ -59,28 +59,26 @@ class TradingBacktester:
         df['MA50'] = ta.sma(df['close'], length=50)
         df['RSI'] = ta.rsi(df['close'], length=14)
         df['AO'] = ta.ao(df['high'], df['low'])  # Add AO calculation
+        # Calculate APO using Exponential Moving Averages
+        df['EMA12'] = df['close'].ewm(span=12, adjust=False).mean()
+        df['EMA26'] = df['close'].ewm(span=26, adjust=False).mean()
+
+        # Absolute Price Oscillator (APO) = EMA12 - EMA26
+        df['APO'] = df['EMA12'] - df['EMA26']
+
+        # Define a moving average for APO to smooth it, say 9-period APO moving average
+        df['APO_MA'] = df['APO'].rolling(window=9).mean()
         return df
 
     def calculate_signals(self, df: pd.DataFrame, window: int = 5) -> pd.Series:
-        # Calculate the moving average of AO
-        df['AO_MA'] = df['AO'].rolling(window=10).mean()
-        #ao_rate_of_change = df['AO'].diff()
-
-        # Generate signals based on AO and its moving average
-        # Buy Signal: It adds the condition that AO was below its moving average in the previous period (shift(1)), but now crosses above it. This avoids false signals in flat markets.
-        #buy_signal = (
-        #    (df['AO'] < 0) & (df['AO'].shift(1) < df['AO_MA'].shift(1)) & (df['AO'] > df['AO_MA'])
-        #)
+        # Buy when APO crosses above its moving average, indicating bullish momentum
         buy_signal = (
-            (df['AO'] < 0) & (df['AO'] > df['AO_MA'])  # Buy when AO is negative and crosses above its moving average
-            #(df['AO'] < 0) & (ao_rate_of_change > 0)  # Buy when AO is negative and its rate of change is positive
+            (df['APO'].shift(1) < df['APO_MA'].shift(1)) & (df['APO'] > df['APO_MA'])
         )
-        #sell_signal = (
-        #    (df['AO'] > 0) & (df['AO'].shift(1) > df['AO_MA'].shift(1)) & (df['AO'] < df['AO_MA'])
-        #)
+
+        # Sell when APO crosses below its moving average, indicating bearish momentum
         sell_signal = (
-            (df['AO'] > 0) & (df['AO'] < df['AO_MA'])  # Sell when AO is positive and crosses below its moving average
-            #(df['AO'] > 0) & (ao_rate_of_change < 0)  # Sell when AO is positive and its rate of change is negative
+            (df['APO'].shift(1) > df['APO_MA'].shift(1)) & (df['APO'] < df['APO_MA'])
         )
         return pd.Series(np.where(buy_signal, 1, np.where(sell_signal, -1, 0)), index=df.index)
 
@@ -231,7 +229,7 @@ class TradingBacktester:
             print(self.df.join(self.signals.rename('signal')).to_string())
 
     def run_backtest(self):
-        #self.display_data()
+        self.display_data()
         balances, returns, final_position, last_buy_price, net_profit_loss, total_fees_paid, trading_volume = self.backtest()
         #self.plot_results(balances)
         #safe_symbol = self.symbol.replace('/', '_')
@@ -303,8 +301,8 @@ class TradingBacktester:
 if __name__ == "__main__":
     #start_time = time.time()
     #print(f"START TIME {start_time}")
-    symbols = ["AAVEUSD", "BTC/USD", "ETH/USD", "ADAUSDT", "ALGOUSDT", "ATOMUSDT", "AVAXUSDT", "DOTUSDT", "CRVUSD", "EGLDUSD", "ENJUSD", "EWTUSD", "FETUSD", "FILUSD", "FLOKIUSD", "FLOWUSD", "GALAUSD", "GMXUSD", "ICPUSD", "INJUSD", "LINKUSDT", "LTCUSDT", "MANAUSDT", "LRCUSD", "MATICUSDT", "MINAUSD", "MKRUSD", "NEARUSD", "OCEANUSD", "PENDLEUSD", "PEPEUSD", "QNTUSD", "PYTHUSD", "RENDERUSD", "SANDUSD", "SHIBUSD", "SOLUSDT", "TAOUSD", "TRXUSD", "UNIUSD", "WIFUSD", "XDGUSD"] 
-    #symbols = ["BTC/USD"]
+    #symbols = ["AAVEUSD", "BTC/USD", "ETH/USD", "ADAUSDT", "ALGOUSDT", "ATOMUSDT", "AVAXUSDT", "DOTUSDT", "CRVUSD", "EGLDUSD", "ENJUSD", "EWTUSD", "FETUSD", "FILUSD", "FLOKIUSD", "FLOWUSD", "GALAUSD", "GMXUSD", "ICPUSD", "INJUSD", "LINKUSDT", "LTCUSDT", "MANAUSDT", "LRCUSD", "MATICUSDT", "MINAUSD", "MKRUSD", "NEARUSD", "OCEANUSD", "PENDLEUSD", "PEPEUSD", "QNTUSD", "PYTHUSD", "RENDERUSD", "SANDUSD", "SHIBUSD", "SOLUSDT", "TAOUSD", "TRXUSD", "UNIUSD", "WIFUSD", "XDGUSD"] 
+    symbols = ["BTC/USD"]
     intervals = [15, 30, 60, 240, 1440]
     #intervals = [60, 240, 1440, 10080]
 

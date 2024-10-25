@@ -54,34 +54,24 @@ class TradingBacktester:
         return df
 
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        # Calculate only SMA, RSI, and AO
+        # Calculate only SMA, RSI, AO, and CCI
         df['MA20'] = ta.sma(df['close'], length=20)
         df['MA50'] = ta.sma(df['close'], length=50)
         df['RSI'] = ta.rsi(df['close'], length=14)
         df['AO'] = ta.ao(df['high'], df['low'])  # Add AO calculation
+        
+        # Calculate CCI
+        df['CCI'] = ta.cci(df['high'], df['low'], df['close'], length=14)  # You can adjust the length as needed
+
         return df
 
-    def calculate_signals(self, df: pd.DataFrame, window: int = 5) -> pd.Series:
-        # Calculate the moving average of AO
-        df['AO_MA'] = df['AO'].rolling(window=10).mean()
-        #ao_rate_of_change = df['AO'].diff()
+    def calculate_signals(self, df: pd.DataFrame) -> pd.Series:
+        # Buy when CCI crosses above -100 (indicating potential bullish momentum)
+        buy_signal = df['CCI'] < -100
 
-        # Generate signals based on AO and its moving average
-        # Buy Signal: It adds the condition that AO was below its moving average in the previous period (shift(1)), but now crosses above it. This avoids false signals in flat markets.
-        #buy_signal = (
-        #    (df['AO'] < 0) & (df['AO'].shift(1) < df['AO_MA'].shift(1)) & (df['AO'] > df['AO_MA'])
-        #)
-        buy_signal = (
-            (df['AO'] < 0) & (df['AO'] > df['AO_MA'])  # Buy when AO is negative and crosses above its moving average
-            #(df['AO'] < 0) & (ao_rate_of_change > 0)  # Buy when AO is negative and its rate of change is positive
-        )
-        #sell_signal = (
-        #    (df['AO'] > 0) & (df['AO'].shift(1) > df['AO_MA'].shift(1)) & (df['AO'] < df['AO_MA'])
-        #)
-        sell_signal = (
-            (df['AO'] > 0) & (df['AO'] < df['AO_MA'])  # Sell when AO is positive and crosses below its moving average
-            #(df['AO'] > 0) & (ao_rate_of_change < 0)  # Sell when AO is positive and its rate of change is negative
-        )
+        # Sell when CCI crosses below 100 (indicating potential bearish momentum)
+        sell_signal = df['CCI'] > 100
+
         return pd.Series(np.where(buy_signal, 1, np.where(sell_signal, -1, 0)), index=df.index)
 
     def backtest(self) -> Tuple[List[float], List[float], float, float, float, float]:
@@ -108,7 +98,7 @@ class TradingBacktester:
             if position > 0 and current_price < last_buy_price * (1 - stop_loss_percentage) and signal != 1:
             #if position > 0 and current_price < last_buy_price * (1 - stop_loss_percentage):
 
-                if not np.isnan(self.df['RSI'].iloc[i]) and self.df['RSI'].iloc[i] > 70:  # Ensure RSI is valid
+                if not np.isnan(self.df['RSI'].iloc[i]):  # Ensure RSI is valid
                 # Trigger stop-loss
                     sell_value = position * current_price * (1 - transaction_cost)
                     balance += sell_value
@@ -135,7 +125,7 @@ class TradingBacktester:
                 else:
                     print("Insufficient balance for buy")
             
-            elif signal == -1 and position > 0 and self.df['RSI'].iloc[i] > 70:
+            elif signal == -1 and position > 0:
                 # Sell
                 sell_value = position * current_price * (1 - transaction_cost)
                 balance += sell_value
@@ -231,7 +221,7 @@ class TradingBacktester:
             print(self.df.join(self.signals.rename('signal')).to_string())
 
     def run_backtest(self):
-        #self.display_data()
+        self.display_data()
         balances, returns, final_position, last_buy_price, net_profit_loss, total_fees_paid, trading_volume = self.backtest()
         #self.plot_results(balances)
         #safe_symbol = self.symbol.replace('/', '_')
@@ -303,8 +293,8 @@ class TradingBacktester:
 if __name__ == "__main__":
     #start_time = time.time()
     #print(f"START TIME {start_time}")
-    symbols = ["AAVEUSD", "BTC/USD", "ETH/USD", "ADAUSDT", "ALGOUSDT", "ATOMUSDT", "AVAXUSDT", "DOTUSDT", "CRVUSD", "EGLDUSD", "ENJUSD", "EWTUSD", "FETUSD", "FILUSD", "FLOKIUSD", "FLOWUSD", "GALAUSD", "GMXUSD", "ICPUSD", "INJUSD", "LINKUSDT", "LTCUSDT", "MANAUSDT", "LRCUSD", "MATICUSDT", "MINAUSD", "MKRUSD", "NEARUSD", "OCEANUSD", "PENDLEUSD", "PEPEUSD", "QNTUSD", "PYTHUSD", "RENDERUSD", "SANDUSD", "SHIBUSD", "SOLUSDT", "TAOUSD", "TRXUSD", "UNIUSD", "WIFUSD", "XDGUSD"] 
-    #symbols = ["BTC/USD"]
+    #symbols = ["AAVEUSD", "BTC/USD", "ETH/USD", "ADAUSDT", "ALGOUSDT", "ATOMUSDT", "AVAXUSDT", "DOTUSDT", "CRVUSD", "EGLDUSD", "ENJUSD", "EWTUSD", "FETUSD", "FILUSD", "FLOKIUSD", "FLOWUSD", "GALAUSD", "GMXUSD", "ICPUSD", "INJUSD", "LINKUSDT", "LTCUSDT", "MANAUSDT", "LRCUSD", "MATICUSDT", "MINAUSD", "MKRUSD", "NEARUSD", "OCEANUSD", "PENDLEUSD", "PEPEUSD", "QNTUSD", "PYTHUSD", "RENDERUSD", "SANDUSD", "SHIBUSD", "SOLUSDT", "TAOUSD", "TRXUSD", "UNIUSD", "WIFUSD", "XDGUSD"] 
+    symbols = ["BTC/USD"]
     intervals = [15, 30, 60, 240, 1440]
     #intervals = [60, 240, 1440, 10080]
 
