@@ -74,6 +74,7 @@ if __name__ == "__main__":
                     backtester = run_backtester(strat, symbol, interval, 10000, 0.05, args.source)
                     # Assuming backtester.run_backtest() returns results
                     results = backtester.run_backtest()  # Call the method to get results
+                    results['strategy'] = strat  # Add the strategy to the results
                     interval_results.append(results)  # Collect results for this interval
                 except Exception as e:
                     print(e)
@@ -85,10 +86,10 @@ if __name__ == "__main__":
             
             # Display top performers for this interval
             print(f"\nTop {len(sorted_results)} performers for interval {interval}:")
-            print(f"{'Rank':<5} {'Symbol':<10} {'Total Return':<20} {'Win Rate':<15} {'Trades Executed':<15} {'Total Fees Paid':<20} {'NET Profit/Loss':<20} {'Trading Volume':<20} {'Sharpe Ratio':<15}")
+            print(f"{'Rank':<5} {'Symbol':<10} {'Strategy':<10} {'Total Return':<20} {'Win Rate':<15} {'Trades Executed':<15} {'Total Fees Paid':<20} {'NET Profit/Loss':<20} {'Trading Volume':<20} {'Sharpe Ratio':<15}")
             print("=" * 160)  # Separator line
-            for i, result in enumerate(sorted_results, 1):  # Changed from sorted_results[:-1] to sorted_results
-                print(f"{i:<5} {result['symbol']:<10} {result['total_return']:<20.2%} {result['win_rate']:<15.2%} {result['trades_executed']:<15} {result['total_fees_paid']:<20.2f} {result['net_profit_loss']:<20.2f} {result['trading_volume']:<20.2f} {result['sharpe_ratio']:<15.2f}")
+            for i, result in enumerate(sorted_results, 1):
+                print(f"{i:<5} {result['symbol']:<10} {result['strategy']:<10} {result['total_return']:<20.2%} {result['win_rate']:<15.2%} {result['trades_executed']:<15} {result['total_fees_paid']:<20.2f} {result['net_profit_loss']:<20.2f} {result['trading_volume']:<20.2f} {result['sharpe_ratio']:<15.2f}")
             # Calculate and display average metrics for this interval
             avg_return = np.mean([r['total_return'] for r in interval_results])
             avg_sharpe = np.mean([r['sharpe_ratio'] for r in interval_results])
