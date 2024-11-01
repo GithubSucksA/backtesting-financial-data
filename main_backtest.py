@@ -68,9 +68,12 @@ if __name__ == "__main__":
 
     # Normalize symbols based on the source
     if args.source in symbol_mapping:
-        symbols = [symbol_mapping[args.source].get(sym, sym) for sym in args.symbol]
-    else:
-        symbols = args.symbol  # Fallback to original if source is not recognized
+        if args.symbol:  # Check if symbols are provided
+            symbols = [symbol_mapping[args.source].get(sym, sym) for sym in args.symbol]
+        else:
+            symbols = ['BTC/USD', 'ETH/USD']  # Default symbols if none provided
+    elif args.symbol:
+        symbols = args.symbol
 
     all_results = []
 
