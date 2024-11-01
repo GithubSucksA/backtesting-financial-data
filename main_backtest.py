@@ -11,6 +11,7 @@ from brarstrat import BrarBacktester
 from ccistrat import CciBacktester
 from cfostrat import CfoBacktester
 from gcstrat import GcBacktester
+from mappings import symbol_mapping, interval_mapping
 
 def run_backtester(strategy: str, symbol: str, interval: str, initial_balance: float, risk_per_trade: float, data_source: str = 'kraken'):
     strategies = {
@@ -39,8 +40,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run a backtesting strategy.")
     parser.add_argument("--strategy", type=str, nargs='*', help="Strategy to use (leave empty to run all strategies).")
     parser.add_argument("--source", type=str, default='kraken', help="Source to retrieve data from")  # Set default value here
-    parser.add_argument("--symbol", type=str, default="BTC/USD", help="Symbol for trading pair.")
-    parser.add_argument("--interval", type=str, default="1440", help="Time interval for trading data.")
+    parser.add_argument("--symbol", type=str, nargs='+', help="Symbol for trading pair.")
+    parser.add_argument("--interval", type=str, nargs='+', help="Time interval for trading data.")
     parser.add_argument("--initial_balance", type=float, default=10000, help="Initial balance for the backtest.")
     parser.add_argument("--risk_per_trade", type=float, default=0.05, help="Risk per trade as a decimal.")
 
@@ -50,18 +51,31 @@ if __name__ == "__main__":
     if not args.strategy:
         args.strategy = ["ao", "apo", "bias", "bos", "brar", "cci", "cfo", "gc"]
 
+    intervals = []
     # Set intervals based on data source
-    intervals = [15, 30, 60, 240, 1440]
-    if args.source == "yahoo":
-        intervals = ['1d', '1wk']
-    
-    symbols = ["BTC/USD", "ETH/USD"]
-    #intervals = [60, 240, 1440, 10080]
+    if not args.interval:
+        if args.source == 'yahoo':
+            intervals = ['1d', '1wk']
+        elif args.source == 'kraken':
+            intervals = [15, 30, 60, 240, 1440]
+        elif args.source == 'htx':
+            intervals = ['15min', '30min', '60min', '4hour', '1day']
+    else:
+        # Normalize intervals based on the source
+        if args.source in interval_mapping:  # Check if the source is valid
+            intervals = [interval_mapping[args.source].get(i, None) for i in args.interval]
+            intervals = [i for i in intervals if i is not None]  # Filter out None values
+
+    # Normalize symbols based on the source
+    if args.source in symbol_mapping:
+        symbols = [symbol_mapping[args.source].get(sym, sym) for sym in args.symbol]
+    else:
+        symbols = args.symbol  # Fallback to original if source is not recognized
 
     all_results = []
 
     for interval in intervals:
-        print(f"\n{interval} MIN")
+        print(f"\n{interval}")
         interval_results = []
         date_range_printed = False
         interval_total_trades = 0

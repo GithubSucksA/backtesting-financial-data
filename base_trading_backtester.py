@@ -80,8 +80,29 @@ class BaseTradingBacktester(ABC):
                 })
             except Exception as e:
                 raise ValueError(f"Error fetching data from Yahoo: {e}")
+        elif self.data_source == 'htx':
+            url = f"https://api.huobi.pro/market/history/kline?period={self.interval}&size=200&symbol={self.symbol}"
+            response = requests.get(url)
+            data = response.json()
+            
+            # Check if the response contains the expected data
+            if 'data' not in data or not data['data']:
+                raise ValueError(f"No data returned for {self.symbol} from HTX.")
+            
+            # Convert the data to a pandas DataFrame
+            df = pd.DataFrame(data['data'], columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            
+            # Convert timestamp to datetime and set as index
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')  # Adjust based on HTX timestamp format
+            df.set_index('timestamp', inplace=True)
+            
+            # Convert price and volume columns to appropriate numeric types
+            numeric_columns = ['open', 'high', 'low', 'close', 'volume']
+            df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric)
+            
+            return df
         else:
-            raise ValueError("Unsupported data source. Please choose 'kraken' or 'yahoo'.")
+            raise ValueError("Unsupported data source. Please choose 'kraken', 'yahoo', or 'htx'.")
 
     @abstractmethod
     def calculate_indicators(self, df):
@@ -238,7 +259,7 @@ class BaseTradingBacktester(ABC):
             print(self.df.join(self.signals.rename('signal')).to_string())
 
     def run_backtest(self):
-        self.display_data()
+        #self.display_data()
         balances, returns, final_position, last_buy_price, net_profit_loss, total_fees_paid, trading_volume = self.backtest()
         #self.plot_results(balances)
         #safe_symbol = self.symbol.replace('/', '_')
