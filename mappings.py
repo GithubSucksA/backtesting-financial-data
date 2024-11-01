@@ -1,8 +1,8 @@
 # Define a mapping for symbol tickers
 symbol_mapping = {
     'kraken': {
-        'BTC/USD': 'BTC/USD',
-        'ETH/USD': 'ETH/USD',
+        'btcusdt': 'BTC/USD',
+        'ethusdt': 'ETH/USD',
     },
     'htx': {
         'BTC/USD': 'btcusdt',
