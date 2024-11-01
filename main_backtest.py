@@ -13,7 +13,7 @@ from cfostrat import CfoBacktester
 from gcstrat import GcBacktester
 from mappings import symbol_mapping, interval_mapping
 
-def run_backtester(strategy: str, symbol: str, interval: str, initial_balance: float, risk_per_trade: float, data_source: str = 'kraken'):
+def run_backtester(strategy: str, symbol: str, interval: str, initial_balance: float, risk_per_trade: float, data_source: str = 'kraken', buy_signal=None, sell_signal=None):
     strategies = {
         "ao": AoBacktester,
         "apo": ApoBacktester,
@@ -26,13 +26,10 @@ def run_backtester(strategy: str, symbol: str, interval: str, initial_balance: f
     }
     
     if strategy in strategies:
-        backtester = strategies[strategy](symbol, interval, initial_balance, risk_per_trade, data_source)
+        backtester = strategies[strategy](symbol, interval, initial_balance, risk_per_trade, data_source, buy_signal, sell_signal)
     else:
         raise ValueError("Invalid strategy name. Choose a valid strategy.")
 
-    # Run the backtest and get results
-    #results = backtester.run_backtest()
-    #print(results)
     return backtester
 
 if __name__ == "__main__":
@@ -77,6 +74,13 @@ if __name__ == "__main__":
 
     all_results = []
 
+    # Define different buy and sell signals for testing
+    buy_sell_configs = [
+        {'buy_signal': 'signal1', 'sell_signal': 'signal1'},
+        {'buy_signal': 'signal2', 'sell_signal': 'signal2'},
+        {'buy_signal': 'signal3', 'sell_signal': 'signal3'},
+    ]
+
     for interval in intervals:
         print(f"\n{interval}")
         interval_results = []
@@ -87,15 +91,17 @@ if __name__ == "__main__":
 
         for symbol in symbols:
             for strat in args.strategy:  # Loop through each specified strategy
-                try:
-                    backtester = run_backtester(strat, symbol, interval, 10000, 0.05, args.source)
-                    # Assuming backtester.run_backtest() returns results
-                    results = backtester.run_backtest()  # Call the method to get results
-                    results['strategy'] = strat  # Add the strategy to the results
-                    interval_results.append(results)  # Collect results for this interval
-                except Exception as e:
-                    print(e)
-                    print(f"Error running backtest for {symbol} with interval {interval}: {e}")
+                for config in buy_sell_configs:
+                    try:
+                        backtester = run_backtester(strat, symbol, interval, 10000, 0.05, args.source, config['buy_signal'], config['sell_signal'])
+                        # Assuming backtester.run_backtest() returns results
+                        results = backtester.run_backtest()  # Call the method to get results
+                        #results['strategy'] = f"{strat} ({config['buy_signal']}, {config['sell_signal']})"  # Add the strategy and signals to the results
+                        results['strategy'] = f"{strat}"
+                        interval_results.append(results)  # Collect results for this interval
+                    except Exception as e:
+                        print(e)
+                        print(f"Error running backtest for {symbol} with interval {interval}: {e}")
         
         # Sort interval results by total return
         if interval_results:  # Check if there are results to process

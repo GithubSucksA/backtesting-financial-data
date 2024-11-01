@@ -23,7 +23,7 @@ class GcBacktester(BaseTradingBacktester):
 
         return df
 
-    def calculate_signals(self, df: pd.DataFrame) -> pd.Series:
+    def calculate_signals(self, df: pd.DataFrame, window: int = 5, buy_signal_config=None, sell_signal_config=None) -> pd.Series:
         # Buy when CFO is below 0 but starting to skew upwards and CoG is below the price
         buy_signal = (df['CoG'] < -0.03)  # Use & instead of and
 

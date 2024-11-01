@@ -18,7 +18,7 @@ class BosBacktester(BaseTradingBacktester):
 
         return df
 
-    def calculate_signals(self, df: pd.DataFrame) -> pd.Series:
+    def calculate_signals(self, df: pd.DataFrame, window: int = 5, buy_signal_config=None, sell_signal_config=None) -> pd.Series:
         # Buy when BIAS crosses above 0 (indicating bullish momentum)
         buy_signal = df['BOP'] > 0
 

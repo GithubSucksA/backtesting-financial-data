@@ -62,7 +62,7 @@ class BrarBacktester(BaseTradingBacktester):
         
         return df
 
-    def calculate_signals(self, df: pd.DataFrame) -> pd.Series:
+    def calculate_signals(self, df: pd.DataFrame, window: int = 5, buy_signal_config=None, sell_signal_config=None) -> pd.Series:
         """
         Calculate trading signals with more lenient conditions and debug output
         """

@@ -10,16 +10,18 @@ import os
 from abc import ABC, abstractmethod
 
 class BaseTradingBacktester(ABC):
-    def __init__(self, symbol: str, interval: str = '1440', initial_balance: float = 10000, risk_per_trade: float = 0.05, data_source: str = 'kraken'):
+    def __init__(self, symbol: str, interval: str = '1440', initial_balance: float = 10000, risk_per_trade: float = 0.05, data_source: str = 'kraken', buy_signal_config=None, sell_signal_config=None):
         self.symbol = symbol
         self.interval = interval
         self.initial_balance = initial_balance
         self.risk_per_trade = risk_per_trade
         self.data_source = data_source
+        self.buy_signal_config = buy_signal_config
+        self.sell_signal_config = sell_signal_config
         self.df = self.fetch_data()
         self.check_data_quality()
         self.df = self.calculate_indicators(self.df)
-        self.signals = self.calculate_signals(self.df)
+        self.signals = self.calculate_signals(self.df, buy_signal_config=self.buy_signal_config, sell_signal_config=self.sell_signal_config)
         self.trades_executed = 0
         self.trading_volume = 0
         self.winning_trades = 0
@@ -258,7 +260,7 @@ class BaseTradingBacktester(ABC):
             print("\nDataFrame with signals:")
             print(self.df.join(self.signals.rename('signal')).to_string())
 
-    def run_backtest(self):
+    def run_backtest(self, buy_signal_config=None, sell_signal_config=None):
         #self.display_data()
         balances, returns, final_position, last_buy_price, net_profit_loss, total_fees_paid, trading_volume = self.backtest()
         #self.plot_results(balances)

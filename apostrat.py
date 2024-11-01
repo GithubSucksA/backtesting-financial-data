@@ -22,7 +22,7 @@ class ApoBacktester(BaseTradingBacktester):
         df['APO_MA'] = df['APO'].rolling(window=9).mean()
         return df
 
-    def calculate_signals(self, df: pd.DataFrame, window: int = 5) -> pd.Series:
+    def calculate_signals(self, df: pd.DataFrame, window: int = 5, buy_signal_config=None, sell_signal_config=None) -> pd.Series:
         # Buy when APO crosses above its moving average, indicating bullish momentum
         buy_signal = (
             (df['APO'].shift(1) < df['APO_MA'].shift(1)) & (df['APO'] > df['APO_MA'])
